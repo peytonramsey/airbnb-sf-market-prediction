@@ -1,0 +1,1792 @@
+---
+title: "Airbnb Team Project Template"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_notebook: default
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+# This chunk shows/hides the code in your final report. When echo = TRUE, the code
+# is shown in the report. When echo = FALSE, the code is hidden from the final report.
+# We would like to see your code, so please leave the setting as is during the course.
+# This chunk will not show up in your reports, so you can safely ignore its existence.
+
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Reminders you can delete if you don't want them in your code or report:
+
+#### Shortcuts:
+
+- Use **CTRL ALT I** to add a new code chunk
+  - Use a new code chunk to answer a new question (or subquestion)
+  
+- Use **ALT -** for the assignment operator <-
+
+- Use **CTRL SHIFT M** for the pipe function %>%
+
+- Use **CTRL ENTER** to run the single line that your cursor is in
+
+- Use **CTRL SHIFT ENTER** to run the whole chunk that your cursor is in
+
+- Hover your mouse over the button at top that looks like "+C"
+  - It will show you the shortcut to **Insert a new code chunk**
+
+- Check out the dropdown menu at top right next to "Run" by clicking on the down arrow
+  - It will show you several shortcuts including **Run selected line(s), Run current chunk, Run all chunks above (which will be very useful), and Run all chunks**
+
+#### Good advice on function:
+
+- Use **read_csv** (NOT read.csv) to load the data
+  
+- When **%>%** function cannot be found, load the tidyverse library again
+
+- Do not load the libraries the instructions ask you **not** to load  
+
+  - **To load packages**: Run library("package_name")
+  - **Use without loading**: Specify package as **package_name::function_name**
+  - **To install packages:** Run install.packages("package_name") or use RStudio menu
+    - You might want to install packages for your project. Otherwise, you are covered.
+
+- R/RStudio is **case sensitive**, so lower vs. Upper case are different
+
+#### Good advice on style:
+
+- We are following the **Tidyverse Style Guide** (https://style.tidyverse.org/), **so does Google** (https://google.github.io/styleguide/Rguide.html)
+
+- Name objects and columns/variables by...
+  - either using an underscore such as **weekly_sales (preferable)**
+  - or starting lowercase and using uppercase for each word such as **weeklySales (still readable)**
+  
+- You will likely see a mix of the two styles in the labs/assignments
+  - Recently, I use **the former style for object names and the latter for column/variable names**
+  
+- There is much more to style: Keep up with the spaces, correct indentations, etc.
+  - When in doubt, visit **style.tidyverse.org** and/or **use the Styler package**
+
+The following is your first chunk to start with. Remember, you can add chunks using the menu
+above (Insert -> R) or using the keyboard shortcut Ctrl+Alt+I. A good practice is to use
+different code chunks to answer different questions (& subquestions). You can delete this comment if you like.
+
+***
+
+```{r}
+library("tidyverse")
+library("tidymodels")
+library("tidylog")
+library("styler")
+```
+
+
+```{r}
+# Loading the Airbnb dataset
+dfaORG <- read_csv("data/dfsf.csv") %>%
+  mutate(high_booking = as.factor(high_booking))
+
+# Check the data folder for your market's data:
+# dfatx.csv => Austin
+# dfsf.csv => San Francisco
+# dfhi.csv => Hawaii
+# dfla.csv => Los Angeles
+# dfnyc.csv => New York City
+
+# You will notice that the data is messy. Welcome to the real world of data science!
+# No need to panic because I will help. Take a breath and read on (you really need to read this!)
+
+# During the project checkpoints, DO NOT drop any observations (so that your answers will match what I have)
+# The data may have multiple observations of the same Airbnb. It's up to you to identify them or not, but later
+```
+
+```{r}
+# Step 1: Remove dollar signs
+remove_dollar_sign <- c("price", "weekly_price", "security_deposit", "monthly_price", "extra_people")
+dfa <-
+  dfaORG %>%
+  mutate_at(remove_dollar_sign, ~str_replace_all(., pattern="\\$", replacement="")) %>%
+  mutate_at(remove_dollar_sign, ~str_replace_all(., pattern=",", replacement="")) %>%
+  mutate_at(remove_dollar_sign, ~as.numeric(.))
+  
+# Step 2: Continue from dfa to remove percentage signs
+remove_pct_sign <- c("host_response_rate", "host_acceptance_rate")
+dfanew <-
+  dfaORG %>%  # Start with dfa instead of dfaORG
+  mutate_at(remove_pct_sign, ~str_replace_all(., pattern="\\%", replacement="")) %>%
+  mutate_at(remove_pct_sign, ~as.numeric(.)) %>%
+  mutate_at(remove_pct_sign, ~(./100))  # Fixed: Add parentheses around the division
+```
+
+
+
+```{r}
+# Explore the data in this chunk and further in other chunks by using boxplots etc.
+
+# head(), str(), glimpse(), nrow(), dim(), summary(), and skim() -> Use wider screen!
+
+head(dfanew)
+```
+
+```{r}
+str(dfaORG)
+```
+
+```{r}
+dfaORG <- dfaORG %>%
+  mutate(id = row_number(), .before = 1)
+```
+
+```{r}
+glimpse(dfanew)
+```
+
+```{r}
+nrow(dfanew)
+```
+
+```{r}
+summary(dfanew$high_booking)
+```
+
+```{r}
+skimr::skim(dfaORG)
+```
+
+
+
+```{r}
+# If you use the following mutate() to update your market's dataframe, all logical variables
+# (TRUE or FALSE) will be converted to their binary counterparts (1 or 0). Use only if you need it.
+# I did not apply this step as a part of the pre-cleaning I did for you as this makes the exploration
+# of the data more difficult (Logical variables will appear as numeric and there are too many of them!).
+dfa %>% 
+ mutate_if(is.logical, as.numeric)
+```
+
+# data cleaning & preprocessing
+```{r}
+# I will help you with a few main cleaning items. The rest is up to each team.
+# Before you ask, yes, "Warning: NAs introduced by coercion" is fine to ignore.
+# In what follows, we start with the cleaning of variables that have dollar signs.
+# You will find out during your modeling that six variables seem to have dollar signs.
+# You may choose to clean them all, a few, or none (not a good idea as you might like price).
+# That's why I coded a general purpose snippet for you. Consider the following as your Roomba.
+# I would strongly recommend you run the code line by line to understand and learn but it is up to you.
+# One way to learn here is to check a variable before and after running a code line and observe the change.
+# To help you do that, I used redundant mutate functions instead of combining all lines into one mutate.
+# Define variables with dollar signs and percentage signs to clean
+
+
+```
+
+
+```{r}
+# Then proceed with your transformations on dfa_train and dfa_test separately
+# Define variables with dollar signs and percentage signs to clean
+remove_dollar_sign <- c("price", "weekly_price", "security_deposit", "monthly_price", "extra_people")
+remove_pct_sign <- c("host_response_rate", "host_acceptance_rate")
+
+# Define logical variables
+logical_variables <- c(
+  "instant_bookable", "host_has_profile_pic", "host_identity_verified",
+  "host_is_superhost", "is_business_travel_ready", "is_location_exact",
+  "require_guest_phone_verification", "require_guest_profile_picture",
+  "requires_license"
+)
+
+# Apply transformations to training data
+dfanew <- dfaORG %>%
+  # Dollar sign cleaning
+  mutate(across(all_of(remove_dollar_sign), ~ str_remove_all(., "\\$"))) %>%
+  mutate(across(all_of(remove_dollar_sign), ~ str_remove_all(., ","))) %>%
+  mutate(across(all_of(remove_dollar_sign), as.numeric)) %>%
+  # Percentage cleaning
+  mutate(across(all_of(remove_pct_sign), ~ str_remove_all(., "\\%"))) %>%
+  mutate(across(all_of(remove_pct_sign), ~ as.numeric(.))) %>%
+  mutate(across(all_of(remove_pct_sign), ~ (. / 100))) %>%
+  # Logical to binary conversion
+  mutate(across(all_of(logical_variables), ~ as.numeric(.)))%>%
+  mutate(host_is_superhost = as.numeric(host_is_superhost))
+
+dfanew <- dfanew %>%
+  # Replace NA with 0 in numeric columns
+  mutate(across(where(is.numeric), ~replace_na(., 0))) %>%
+  # Replace NA with "" (empty string) in character columns
+  mutate(across(where(is.character), ~replace_na(., "")))
+
+# TO GET MORE THAN NUMERICAL VARS COMMENT
+
+dfanew <- dfanew %>% 
+  select(high_booking, host_is_superhost, where(is.numeric))
+
+# dfanew <- dfanew %>%
+#   mutate(id = row_number(), .before = 1)
+
+# Set seed for reproducibility
+set.seed(3.14159)
+```
+```{r}
+ head(dfanew)
+```
+
+
+
+```{r}
+# Split data
+dfa_split <- initial_split(dfanew)
+dfa_train <- training(dfa_split)
+dfa_test <- testing(dfa_split)
+
+```
+
+
+```{r}
+### Box Plots
+plot2 <-
+  ggplot(data = dfa, aes(x = (beds), y = price)) +
+  geom_boxplot(fill = "lightblue", color = "black")
+plot2
+
+glimpse(dfanew)
+
+# Box Plot Ideas?
+plot1 <-
+  ggplot(data = dfa, aes(x = as.factor(host_is_superhost), y = price)) +
+  geom_boxplot(fill = "lightblue", color = "black")
+plot1
+
+plot2 <-
+  ggplot(data = dfa, aes(x = (beds), y = price)) +
+  geom_boxplot(fill = "lightblue", color = "black")
+plot2
+
+plot4 <-
+  ggplot(data = dfa, aes(x = beds, y = price)) +
+  geom_point()
+plot4
+
+plot5 <-
+  ggplot(data = dfa, aes(x = beds, y = review_scores_value)) +
+  geom_point()
+plot5
+```
+
+```{r}
+mean(dfanew$price, trim = 0, na.rm = TRUE)
+
+median(dfanew$price, trim = 0, na.rm = TRUE)
+
+sd(dfanew$price, na.rm = TRUE)
+
+hist(log(dfanew$price))
+
+skimr::skim(dfanew)
+
+skimr::skim(dfa)
+
+skimr::skim(dfaORG)
+
+summary(dfanew)
+
+plot2 <-
+  ggplot(data = dfa, aes(x = beds, y = price)) +
+  geom_point()
+plot2
+
+hist(dfanew$price)
+```
+
+```{r}
+# Calculate the percentage of super hosts
+superhost_percentage <-
+  dfanew %>%
+  mutate(is_superhost_numeric = as.numeric(host_is_superhost)) %>%
+  summarize(percentage = mean(is_superhost_numeric, na.rm = TRUE) * 100)
+superhost_percentage
+
+# 1. Price vs. Review Scores with High Booking overlay
+plot1 <-
+  ggplot(dfanew, aes(x = review_scores_rating, y = price)) +
+  geom_point(aes(color = high_booking), alpha = 0.6) +
+  scale_y_log10() +
+  labs(
+    title = "Relationship between Ratings, Price, and Booking Success",
+    x = "Overall Review Score", y = "Price (log scale)",
+    color = "High Booking Rate"
+  ) +
+  theme_minimal()
+plot1
+```
+
+```{r}
+
+# knn_model <-
+#   nearest_neighbor(neighbors = tune("K")) %>%
+#   set_engine("kknn") %>%
+#   set_mode("classification")
+# 
+# knn_workflow <-
+#   workflow() %>%
+#   add_recipe(recipe = log_recipe) %>%
+#   add_model(knn_model)
+# 
+# knn_grid <-
+#   parameters(knn_workflow) %>%
+#   update(K = neighbors(c(1, 15))) %>%
+#   grid_regular(levels = 15) %>%
+#   filter(K %% 2 == 1)
+# 
+# best_k <-
+#   tune_grid(knn_workflow, resamples = vfold_cv(dfa_train_clean, v = 10), grid = knn_grid) %>%
+#   select_best("accuracy")
+# 
+# # Create a recipe with KNN imputation
+# knn_impute_recipe <- recipe(
+#   high_booking ~ price + bedrooms + host_is_superhost +
+#     accommodates + bathrooms + beds +
+#     review_scores_rating + review_scores_cleanliness +
+#     review_scores_location + cleaning_fee +
+#     host_response_rate + host_acceptance_rate +
+#     instant_bookable,
+#   data = dfa_train_clean
+# ) %>%
+#   step_normalize(all_numeric_predictors()) %>%
+#   step_impute_knn(
+#     all_numeric_predictors(),
+#     neighbors = 5 
+#   ) %>%
+#   step_impute_mode(all_nominal_predictors())
+
+```
+
+# log model
+```{r}
+log_recipe <-
+  dfa_train %>% 
+  recipe(high_booking ~ .)
+
+log_method <-
+  logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+log_workflow <-
+  workflow() %>%
+  add_model(log_method) %>%
+  add_recipe(log_recipe)
+
+fit_log <-
+  fit(log_workflow, data = dfa_train)
+
+tidy(fit_log)
+
+glance(fit_log)
+```
+
+#interpreting coefficients
+```{r}
+# Now you can prepare the recipe and estimate the model via a single call to fit():
+log_fit <- fit(log_workflow, data = dfa_train)
+
+# You can also run my_cool_log_fit for a summary of the model
+
+# Cool model summary:
+tidy(log_fit)
+
+# You could also use  :)
+summary(log_fit$fit$fit$fit)
+
+# Interpreting price
+exp(2.558e-04)
+# A 1 dollar increase in the price of an airBnB is associated with an increase in the odds of that airB&B having a high booking rate by a factor of 1.000256
+
+# Interpreting bedrooms
+exp(2e-16)
+# An increase of 1 in the number of bedrooms of an airBnB is associated with an increase in the odds of that airB&B having a high booking rate by a factor of 1.
+
+# Interpreting price
+exp(-3.082e-01)
+# The host of an airBnB being a superhost is associated with decrease in the odds of that airB&B having a high booking rate by a factor of 0.7347683.
+```
+
+```{r}
+exp(5.008422e-01)
+```
+
+
+# generated predicted probabilities & classification
+```{r}
+results_log <-
+  predict(log_fit, new_data = dfa_test, type = "prob") %>%
+  bind_cols(dfa_test) %>%
+  rename(Predicted_Probability = .pred_1)
+
+# Convert high_booking to factor
+  results_log <-
+  results_log %>%
+  mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+```
+
+# calculate auc
+```{r}
+# Calculate AUC
+auc_value <-
+  yardstick::roc_auc(results_log,
+    truth = high_booking,
+    Predicted_Probability,
+    estimator = NULL,
+    na_rm = TRUE,
+    event_level = "second",
+    case_weights = NULL
+  )
+
+auc_value
+
+# the roc_auc is 0.61, or 61%.
+```
+
+
+
+```{r}
+# Apply the split described in the 2nd paragraph of Section 4 of the guidelines. What is the mean price of an Airbnb in the test set? Is it in line with the mean price of an Airbnb in the train set?
+mean(dfa_test$price, trim = 0, na.rm = TRUE)
+mean(dfa_train$price, trim = 0, na.rm = TRUE)
+# the mean price of an Airbnb in the test set is $245.01, which is $16.27 lower than the mean in the train set. this just shows that there are some high-priced outliers pulling the mean upward/lower in both sets.
+
+
+# How about the median price in both sets?
+median(dfa_test$price, trim = 0, na.rn = TRUE)
+median(dfa_train$price, trim = 0, na.rn = TRUE)
+# the median of the test set is $159, while it is $150 in the train set, similar to the mean, there isn't a large discrepancy between the two numbers, suggesting there are different outliers in each which is resulting in two different medians.
+
+
+# What does the difference (if any) between the means and medians (between the train and test sets) tell you about your market?
+# the difference suggests that the market in San Francisco has a significant price stratification, meaning the large gap between mean and median indicates there are some high-price Airbnb's. We also can infer that the train set has more outliers as it has a higher mean, being pulled by those high-priced Airbnb's. This pattern is showing that San Francisco has a strong middle-price market, but there are some "luxury" Airbnb's that're being captured in the data set.
+```
+
+
+
+```{r}
+# Create a LightGBM method object
+# install.packages("bonsai")
+# library("bonsai")
+# library(parsnip)
+# library(bonsai)
+# # Create a workflow for the LightGBM model (pay attention to the recipe used)
+# lightgbm_workflow_default <-
+#   workflow() %>%
+#   add_recipe(airbnb_recipe_xg) %>%
+#   add_model(lightgbm_method_default)
+```
+
+
+```{r}
+# # Create a LightGBM method object
+# install.packages("bonsai")
+# library("bonsai")
+# lightgbm_method_default <-
+#   boost_tree() %>%
+#   set_engine("lightgbm") %>%
+#   set_mode("classification")
+# # Create a workflow for the LightGBM model (pay attention to the recipe used)
+# lightgbm_workflow_default <-
+#   workflow() %>%
+#   add_recipe(airbnb_recipe_xg) %>%
+#   add_model(lightgbm_method_default)
+# install.packages("bonsai")
+```
+# 
+# 
+```{r}
+# # Create a LightGBM method object
+# install.packages("bonsai")
+# library("bonsai")
+# lightgbm_method_default <-
+#   boost_tree() %>%
+#   set_engine("lightgbm") %>%
+#   set_mode("classification")
+```
+# 
+# 
+```{r}
+# # Create a workflow for the LightGBM model (pay attention to the recipe used)
+# lightgbm_workflow_default <-
+#   workflow() %>%
+#   add_recipe(airbnb_recipe_xg) %>%
+#   add_model(lightgbm_method_default)
+```
+# 
+# 
+```{r}
+# # Don't forget to use the analysis part of the training data to fit the model (df_train_analysis)
+# set.seed(3.14159)
+# fit_lightgbm_default <-
+#   fit(lightgbm_workflow_default, dfa_train)
+# # Create a LightGBM method object
+# install.packages("bonsai")
+# library("bonsai")
+# lightgbm_method_default <-
+#   boost_tree() %>%
+#   set_engine("lightgbm") %>%
+#   set_mode("classification")
+```
+# 
+# 
+```{r}
+# # Create a workflow for the LightGBM model (pay attention to the recipe used)
+# lightgbm_workflow_default <-
+#   workflow() %>%
+#   add_recipe(airbnb_recipe_xg) %>%
+#   add_model(lightgbm_method_default)
+```
+
+
+```{r}
+# Create a XGBoost method object
+# install.packages("xgboost")
+# library("xgboost")
+```
+# 
+# # Early random forest when it was the only one working. 
+```{r}
+# # Create the random forest model
+# rforest_method <-
+#   rand_forest() %>%
+#   set_engine("ranger") %>%
+#   set_mode("classification")
+# 
+# # Create random forest recipe
+# rforest_recipe <-
+#   recipe(high_booking ~ price + bedrooms + host_is_superhost, data = dfa_train)
+# 
+# # Create random forest workflow
+# rforest_workflow <- workflow() %>%
+#   add_model(rforest_method) %>%
+#   add_recipe(rforest_recipe)
+# 
+# # Fit random forest model
+# set.seed(3.14159)
+# fit_rforest <-
+#   fit(rforest_workflow, dfa_train)
+# 
+# # Make predictions on assessment data
+# results_to_assess_rforest <-
+#   predict(fit_rforest, dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Convert high_booking to factor
+# results_to_assess_rforest <-
+#   results_to_assess_rforest %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+# 
+# # Rename columns
+# results_to_assess_rforest <-
+#   results_to_assess_rforest %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # ROC AUC
+# roc_auc_result <- yardstick::roc_auc(
+#   data = results_to_assess_rforest,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   estimator = NULL,
+#   na_rm = TRUE,
+#   event_level = "second",
+#   case_weights = NULL
+# )
+# 
+# roc_auc_result
+# 
+# # Accuracy
+# accuracy_rf <-
+#   accuracy(
+#     data = results_to_assess_rforest %>%
+#       mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#         levels = c(0, 1)
+#       )),
+#     truth = high_booking,
+#     estimate = predicted_class
+#   )
+# 
+# accuracy_rf
+# 
+# # Confusion matrix
+# conf_mat_rf <-
+#   conf_mat(
+#     data = results_to_assess_rforest %>%
+#       mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#         levels = c(0, 1)
+#       )),
+#     truth = high_booking,
+#     estimate = predicted_class
+#   )
+# 
+# conf_mat_rf
+# 
+# # the roc_auc is 0.73
+```
+# 
+# 
+# # Question 1: How does high_booking affect the weekly_price?
+```{r}
+# # Simple comparison of weekly prices between high and low booking properties
+# weekly_price_analysis <- dfa_train %>%
+#   filter(!is.na(weekly_price)) %>%
+#   group_by(high_booking) %>%
+#   summarise(
+#     avg_weekly_price = mean(weekly_price, na.rm = TRUE),
+#     median_weekly_price = median(weekly_price, na.rm = TRUE),
+#     min_weekly_price = min(weekly_price, na.rm = TRUE),
+#     max_weekly_price = max(weekly_price, na.rm = TRUE),
+#     count = n()
+#   )
+# 
+# print("Weekly Price by Booking Status:")
+# weekly_price_analysis
+# 
+# # Visualize the difference in weekly prices
+# ggplot(
+#   dfa_train %>% filter(!is.na(weekly_price)),
+#   aes(x = high_booking, y = weekly_price)
+# ) +
+#   geom_boxplot() +
+#   labs(
+#     title = "Weekly Price by Booking Status",
+#     x = "High Booking Rate",
+#     y = "Weekly Price"
+#   ) +
+#   theme_minimal()
+# 
+# # Check if there's a discount for weekly prices compared to daily price × 7
+# weekly_discount_analysis <- dfa_train %>%
+#   filter(!is.na(weekly_price), !is.na(price)) %>%
+#   mutate(
+#     weekly_equivalent = price * 7,
+#     discount_percentage = (weekly_equivalent - weekly_price) / weekly_equivalent * 100
+#   ) %>%
+#   group_by(high_booking) %>%
+#   summarise(
+#     avg_discount_percentage = mean(discount_percentage, na.rm = TRUE),
+#     median_discount_percentage = median(discount_percentage, na.rm = TRUE),
+#     count = n()
+#   )
+# 
+# print("Weekly Discount Analysis:")
+# print(weekly_discount_analysis)
+```
+
+
+# Question 2: Is there a correlation between high_booking and location?
+```{r}
+# # Analysis of booking rates by neighborhood
+# location_analysis <- dfa_train %>%
+#   group_by(neighbourhood) %>%
+#   summarise(
+#     booking_rate = mean(high_booking == TRUE, na.rm = TRUE),
+#     count = n()
+#   ) %>%
+#   filter(count >= 10) %>%
+#   arrange(desc(booking_rate))
+# 
+# print("Top 5 Neighborhoods by Booking Rate:")
+# head(location_analysis, 5)
+# 
+# print("Bottom 5 Neighborhoods by Booking Rate:")
+# tail(location_analysis, 5)
+# 
+# # Simple plot of top neighborhoods
+# top_neighborhoods <-
+#   head(location_analysis, 10)$neighbourhood
+# 
+# ggplot(
+#   dfa_train %>%
+#     filter(neighbourhood %in% top_neighborhoods),
+#   aes(x = longitude, y = latitude, color = high_booking)
+# ) +
+#   geom_point(alpha = 0.5) +
+#   labs(
+#     title = "Booking Status in Top Neighborhoods",
+#     x = "Longitude",
+#     y = "Latitude"
+#   ) +
+#   theme_minimal()
+# 
+# # Random forest model focused on location features
+# location_recipe <-
+#   recipe(high_booking ~ neighbourhood + latitude + longitude,
+#     data = dfa_train
+#   ) %>%
+#   step_dummy(all_nominal_predictors())
+# 
+# location_workflow <-
+#   workflow() %>%
+#   add_model(
+#     rand_forest(trees = 200) %>%
+#       set_engine("ranger", importance = "impurity") %>%
+#       set_mode("classification")
+#   ) %>%
+#   add_recipe(location_recipe)
+
+# set.seed(123)
+# location_fit <- fit(location_workflow, dfa_train)
+```
+
+
+# Question 3: How does high booking affect the review scores?
+```{r}
+# Compare review scores for high vs low booking properties
+review_analysis <- dfa_train %>%
+  select(high_booking, starts_with("review_scores_")) %>%
+  group_by(high_booking) %>%
+  summarise(across(
+    .cols = everything(),
+    .fns = list(
+      avg = ~ mean(., na.rm = TRUE),
+      median = ~ median(., na.rm = TRUE),
+      count = ~ sum(!is.na(.))
+    ),
+    .names = "{.col}_{.fn}"
+  ))
+
+# Simplify the output
+review_summary <- dfa_train %>%
+  select(
+    high_booking,
+    review_scores_rating,
+    review_scores_accuracy,
+    review_scores_cleanliness,
+    review_scores_location,
+    review_scores_value
+  ) %>%
+  group_by(high_booking) %>%
+  summarise(across(
+    .cols = everything(),
+    .fns = ~ mean(., na.rm = TRUE),
+    .names = "avg_{.col}"
+  ))
+
+print("Average Review Scores by Booking Status:")
+review_summary
+
+# Visualize differences in review scores
+review_long <- dfa_train %>%
+  select(high_booking,
+    rating = review_scores_rating,
+    accuracy = review_scores_accuracy,
+    cleanliness = review_scores_cleanliness,
+    location = review_scores_location,
+    value = review_scores_value
+  ) %>%
+  pivot_longer(
+    cols = -high_booking,
+    names_to = "score_type",
+    values_to = "score"
+  )
+
+ggplot(review_long, aes(x = score_type, y = score, fill = high_booking)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(
+    title = "Review Scores by Booking Status",
+    x = "Score Type",
+    y = "Average Score"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# # Enhanced bedroom price visualization
+# ggplot(property_price_analysis, aes(x = bedrooms, y = price, fill = high_booking)) +
+#   geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+#   # Add median price labels
+#   stat_summary(fun = median, geom = "text", 
+#                aes(label = scales::dollar(..y.., accuracy = 1)), 
+#                position = position_dodge(width = 0.75), vjust = -0.5, size = 3) +
+#   # Add sample size
+#   stat_summary(fun = function(x) length(x), geom = "text",
+#                aes(label = paste0("n=", ..y..), group = high_booking),
+#                position = position_dodge(width = 0.75), vjust = 4, size = 3) +
+#   scale_y_log10(labels = scales::dollar_format(), limits = c(25, 1000)) +
+#   scale_fill_manual(values = c("firebrick", "steelblue"), 
+#                     labels = c("Low Booking Rate", "High Booking Rate"),
+#                     name = "Booking Status") +
+#   labs(
+#     title = "Price Strategy by Number of Bedrooms",
+#     subtitle = "Comparing successful vs. unsuccessful listings",
+#     x = "Number of Bedrooms (5+ grouped)",
+#     y = "Price (log scale)"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     plot.title = element_text(size = 14, face = "bold"),
+#     legend.position = "bottom"
+#   )
+```
+
+
+```{r}
+# Install required packages if not already installed
+# if(!require(leaflet)) install.packages("leaflet")
+# 
+# library(leaflet)
+# library(scales)
+# 
+# # Create a color palette function
+# price_pal <- colorNumeric(
+#   palette = "viridis",
+#   domain = log10(dfa_train$price),
+#   na.color = "transparent"
+# )
+# 
+# # Create an interactive map
+# leaflet(dfa_train %>% filter(!is.na(latitude), !is.na(longitude), !is.na(price))) %>%
+#   addProviderTiles(providers$CartoDB.Positron) %>%
+#   addCircleMarkers(
+#     ~longitude, ~latitude,
+#     color = ~price_pal(log10(price)),
+#     radius = 4,
+#     fillOpacity = 0.8,
+#     stroke = FALSE,
+#     popup = ~paste(
+#       "<strong>Price:</strong> $", round(price, 2), "<br>",
+#       "<strong>Bedrooms:</strong> ", bedrooms, "<br>",
+#       "<strong>High Booking:</strong> ", high_booking
+#     )
+#   ) %>%
+#   addLegend(
+#     position = "bottomright",
+#     pal = price_pal,
+#     values = ~log10(price),
+#     labFormat = labelFormat(
+#       prefix = "$",
+#       transform = function(x) round(10^x)
+#     ),
+#     title = "Price",
+#     opacity = 0.8
+#   )
+```
+# 
+# 
+```{r}
+# install.packages("ggmap")
+```
+# 
+```{r}
+# install.packages("lightgbm") # Install the actual lightgbm package
+# install.packages("bonsai")
+# install.packages("glmnet")
+```
+# 
+# 
+```{r}
+# library("bonsai")
+# library("lightgbm")
+# library("glmnet")
+```
+# 
+# 
+```{r}
+# # Load necessary libraries
+# library(tidyverse)
+# library(tidymodels)
+# library(bonsai)
+# library(lightgbm)
+# library(yardstick)
+# 
+# # First, let's check what's in the training data
+# # It appears high_booking exists but is being accessed incorrectly
+# head(dfa_train$high_booking)
+# 
+# # Create a modified recipe that accesses the data properly
+# lightgbm_recipe <- recipe(high_booking ~ price + bedrooms + host_is_superhost, data = dfa_train_clean) %>%
+#   # Handle host_is_superhost - make sure to handle NA values
+#   step_unknown(host_is_superhost) %>%
+#   step_dummy(host_is_superhost) %>%
+#   # Scale numeric predictors
+#   step_normalize(all_numeric_predictors())
+```
+# 
+```{r}
+# # Create LightGBM model with balanced settings
+# lightgbm_model <- boost_tree(
+#   trees = 100,
+#   min_n = 5,
+#   tree_depth = 6,
+#   learn_rate = 0.1
+# ) %>%
+#   set_engine("lightgbm",
+#     objective = "binary",
+#     # Important: Explicitly set objective to maximize AUC
+#     metric = "auc",
+#     # Balance class weights to handle any imbalance
+#     class_weight = "balanced"
+#   ) %>%
+#   set_mode("classification")
+```
+# 
+```{r}
+# # Create workflow
+# lightgbm_workflow <- workflow() %>%
+#   add_recipe(lightgbm_recipe) %>%
+#   add_model(lightgbm_model)
+# 
+# # Set seed for reproducibility
+# set.seed(3.14159)
+```
+# 
+# 
+```{r}
+# # Fit the model
+# fit_lightgbm <- try({
+#   fit(lightgbm_workflow, dfa_train_clean)
+# })
+```
+# 
+# 
+```{r}
+# 
+# # Verify model fitted successfully
+# if(!inherits(fit_lightgbm, "try-error")) {
+#   # Get predicted probabilities
+#   pred_probs <- predict(fit_lightgbm, new_data = dfa_test, type = "prob")
+# }
+#   # Try both normal and reversed probabilities to find the correct orientation
+#   roc_results_normal <- dfa_test %>%
+#     bind_cols(pred_probs) %>%
+#     roc_auc(truth = high_booking, .pred_1)
+# 
+#   roc_results_reversed <- dfa_test %>%
+#     bind_cols(pred_probs) %>%
+#     roc_auc(truth = high_booking, estimate = 1 - .pred_1)
+# 
+#   # Use the better result
+#   print("Normal orientation AUC:")
+#   print(roc_results_normal)
+# 
+#   print("Reversed orientation AUC:")
+#   print(roc_results_reversed)
+# 
+#   # Choose the better orientation for plotting
+#   if (roc_results_normal$.estimate > roc_results_reversed$.estimate) {
+#     final_pred <- pred_probs$.pred_1
+#     final_auc <- roc_results_normal$.estimate
+#   } else {
+#     final_pred <- 1 - pred_probs$.pred_1
+#     final_auc <- roc_results_reversed$.estimate
+#   }
+```
+
+
+
+```{r}
+#   # Create ROC curve with correct orientation
+#   roc_curve_data <- dfa_test %>%
+#     mutate(.pred = final_pred) %>%
+#     roc_curve(truth = high_booking, .pred)
+# 
+#   # Plot ROC curve
+#   rocgplot <-
+#     gplot(roc_curve_data, aes(x = 1 - specificity, y = sensitivity)) +
+#     geom_line(color = "blue", size = 1) +
+#     geom_abline(lty = 3) +
+#     coord_equal() +
+#     labs(
+#       title = "ROC Curve for LightGBM Model",
+#       subtitle = paste("AUC =", round(final_auc, 3)),
+#       x = "False Positive Rate (1 - Specificity)",
+#       y = "True Positive Rate (Sensitivity)"
+#     ) +
+#     theme_minimal()
+# 
+# 
+# rocgplot
+```
+
+
+#### What variables should we maintain? Which variabes should be in the final logistic regression?
+```{r}
+# #Lasso variable selection
+# lasso_recipe <- recipe(high_booking ~ ., data = dfa_train) %>% 
+# # Create a linear regression method object
+# 
+# # Matt's Lasso code start:
+#   step_mutate_at(where(is.logical), fn = as.factor) %>%
+# 
+#   # Impute missing values
+#   step_impute_median(all_numeric_predictors()) %>%
+#   step_impute_mode(all_nominal_predictors()) %>%
+# 
+#   step_zv(all_predictors()) %>%
+# 
+#   # encode categorical predictors
+#   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+# 
+#   # Normalize numeric predictors
+#   step_normalize(all_numeric_predictors())
+# 
+# # Matt's Lasso code End:
+# lasso_model_tune <-
+# logistic_reg(mixture = 1, penalty = tune()) %>%
+# set_engine("glmnet")
+# # Create a workflow
+# lasso_workflow <-
+# workflow() %>%
+# add_model(lasso_model_tune) %>%
+# add_recipe(lasso_recipe)
+# # Use cross validation to find RMSE per lambda value
+# lasso_cv_results <- tune_grid(lasso_workflow,
+# resamples = vfold_cv(dfa_train, v = 10),
+# grid = grid_regular(penalty(), levels = 50))
+# 
+# # Select the lambda with the lowest RMSE
+# highest_ac <- lasso_cv_results %>% select_best("roc_curve", maximize = TRUE)
+# # Finalize the workflow
+# lasso_workflow_finalized <- finalize_workflow(lasso_workflow, highest_ac)
+# # Fit the model using the complete training data
+# lasso_fit <- fit(lasso_workflow_finalized, data = dfa_train)
+# 
+# # Matt's code start:
+# lasso_fit
+
+```
+
+#### What variables should we maintain? Which variabes should be in the final logistic regression?
+```{r}
+# # MATT'S LASSO CODE START (Not used in report, testing to see if it worked. It did)
+# lasso_recipe <- recipe(high_booking ~ ., data = dfa_train) %>%
+# 
+#     # Convert logicals to factors
+#   step_mutate_at(where(is.logical), fn = as.factor) %>%
+# 
+#   # Impute missing values
+#   step_impute_median(all_numeric_predictors()) %>%
+#   step_impute_mode(all_nominal_predictors()) %>%
+# 
+#   step_zv(all_predictors()) %>%
+# 
+#   # encode categorical predictors
+#   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+# 
+#   # Normalize numeric predictors
+#   step_normalize(all_numeric_predictors())
+# 
+# lasso_model_tune <- 
+#   logistic_reg(mixture = 1, penalty = tune()) %>%
+#   set_engine("glmnet")
+# 
+# lasso_workflow <- 
+#   workflow() %>% 
+#   add_model(lasso_model_tune) %>% 
+#   add_recipe(lasso_recipe)
+# 
+# set.seed(314159)
+# folds <- vfold_cv(dfa_train, v = 10)
+# 
+# lasso_results <- 
+#   tune_grid(lasso_workflow, resamples = folds, grid = 20, metrics = metric_set(roc_auc))
+# 
+# best_lasso <- select_best(lasso_results, metric = "roc_auc")
+# 
+# final_lasso <- finalize_workflow(lasso_workflow, best_lasso)
+# final_lasso_fit <- fit(final_lasso, data = dfa_train)
+# 
+# # Which vars did it keep
+# tidy(final_lasso_fit) %>%
+#   filter(estimate != 0)
+# 
+# results_lasso <- predict(final_lasso_fit, dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test) %>%
+#   mutate(
+#     predictedProbability = .pred_1,
+#     predictedClass = as.factor(ifelse(predictedProbability > 0.5, "1", "0")),
+#     high_booking = as.factor(high_booking)
+#   )
+# 
+# roc_auc(results_lasso, truth = high_booking, predictedProbability, event_level = "second")
+# 
+# #MATT'S LASSO CODE STOP
+```
+
+```{r}
+# This means that once the 'less predictive' variables were dropped and it ran a new logistic regression with the necessary ones it got and roc of 80.1%
+```
+
+```{r}
+# ##### lightgbm Working!!!
+# library(lightgbm)
+# 
+# # Define the recipe
+# recipe_spec <- recipe(high_booking ~ ., data = dfa_train) %>%
+#   step_normalize(all_numeric_predictors()) %>%
+#   step_dummy(all_nominal_predictors()) %>%
+#   step_zv(all_predictors())
+# 
+# # Specify the LightGBM model
+# lgb_spec <- boost_tree(
+#   trees = 100,
+#   tree_depth = 6,
+#   min_n = 10,
+#   learn_rate = 0.1
+# ) %>%
+#   set_engine("lightgbm") %>%
+#   set_mode("classification")
+# 
+# # Create the workflow
+# lgb_workflow <- workflow() %>%
+#   add_recipe(recipe_spec) %>%
+#   add_model(lgb_spec)
+# 
+# # Fit the model
+# lgb_fit <- lgb_workflow %>%
+#   fit(data = dfa_train)
+# 
+# # Evaluate the model
+# lgb_pred <- lgb_fit %>%
+#   predict(new_data = dfa_test) %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Calculate accuracy
+# accuracy <- lgb_pred %>%
+#   metrics(truth = high_booking, estimate = .pred_class) %>%
+#   filter(.metric == "accuracy") %>%
+#   pull(.estimate)
+# 
+# print(paste("Model accuracy:", round(accuracy, 3)))
+# 
+# # Make predictions on assessment data
+# results_lgb <-
+#   predict(lgb_fit, dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Convert high_booking to factor
+# results_lgb <-
+#   results_lgb %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+# 
+# # Rename columns
+# results_lgb <-
+#   results_lgb %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # ROC AUC
+# roc_auc_lgb <- yardstick::roc_auc(
+#   data = results_lgb,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   estimator = NULL,
+#   na_rm = TRUE,
+#   event_level = "second",
+#   case_weights = NULL
+# )
+# roc_auc_lgb
+```
+# 
+```{r}
+# library(ranger)
+# 
+# # Define the recipe
+# recipe_rand <- recipe(high_booking ~ ., 
+#                      data = dfa_train) %>%
+#   step_normalize(all_numeric_predictors()) %>%
+#   step_dummy(all_nominal_predictors()) %>%
+#   step_zv(all_predictors())
+# 
+# # Specify the Random Forest model
+# rf_rand <- rand_forest(
+#   trees = 1500,
+#   mtry = 3,
+#   min_n = 10
+# ) %>%
+#   set_engine("ranger") %>%
+#   set_mode("classification")
+# 
+# # Create the workflow
+# rf_workflow <- workflow() %>%
+#   add_recipe(recipe_rand) %>%
+#   add_model(rf_rand)
+# 
+# # Fit the model
+# rf_fit <- rf_workflow %>%
+#   fit(data = dfa_train)
+# 
+# # Evaluate the model
+# rf_pred <- rf_fit %>%
+#   predict(new_data = dfa_test) %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Calculate accuracy
+# accuracy <- rf_pred %>%
+#   metrics(truth = high_booking, estimate = .pred_class) %>%
+#   filter(.metric == "accuracy") %>%
+#   pull(.estimate)
+# 
+# print(paste("Random Forest model accuracy:", round(accuracy, 3)))
+```
+# 
+```{r}
+# library(tidyverse)
+# library(tidymodels)
+# library(baguette)
+# 
+# # Define the recipe
+# bgt_recipe_spec <- recipe(high_booking ~ accommodates + bathrooms + bedrooms + beds + 
+#                          extra_people + guests_included + host_acceptance_rate + 
+#                          host_listings_count + host_response_rate, 
+#                          data = dfa_train) %>%
+#   step_normalize(all_numeric_predictors()) %>%
+#   step_dummy(all_nominal_predictors()) %>%
+#   step_zv(all_predictors())
+# 
+# # Specify the Bagged Trees model
+# bgt_spec <- bag_tree( # this method is locked to 25 trees and no more
+#   min_n = 10  # Minimum number of observations per node
+# ) %>%
+#   set_engine("rpart") %>%
+#   set_mode("classification")
+# 
+# # Create the workflow
+# bgt_workflow <- workflow() %>%
+#   add_recipe(bgt_recipe_spec) %>%
+#   add_model(bgt_spec)
+# 
+# # Fit the model
+# bgt_fit <- bgt_workflow %>%
+#   fit(data = dfa_train)
+# 
+# # Evaluate the model
+# bgt_pred <- bgt_fit %>%
+#   predict(new_data = dfa_test) %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Calculate accuracy
+# accuracy <- bgt_pred %>%
+#   metrics(truth = high_booking, estimate = .pred_class) %>%
+#   filter(.metric == "accuracy") %>%
+#   pull(.estimate)
+# 
+# print(paste("Bagged Trees model accuracy:", round(accuracy, 3)))
+```
+# 
+# 
+```{r}
+# # Load necessary libraries
+# library(tidyverse)
+# library(tidymodels)
+# library(baguette)  # For bagged trees
+# library(recipes)
+# 
+# # Create the recipe with bgt_ prefix
+# bgt2_recipe <- recipe(high_booking ~ ., 
+#                  data = dfa_train) %>%
+#   step_normalize(all_predictors()) %>%
+#   step_zv(all_predictors())
+# 
+# # Create the bagged tree model specification with 100 trees
+# # The parameter should be passed to the set_engine function
+# bgt2_model <- bag_tree() %>%
+#   set_engine("rpart", times = 350) %>%
+#   set_mode("classification")
+# 
+# # Create the workflow
+# bgt2_workflow <- workflow() %>%
+#   add_recipe(bgt2_recipe) %>%
+#   add_model(bgt2_model)
+# 
+# # Fit the model
+# bgt2_fit <- bgt2_workflow %>%
+#   fit(data = dfa_train)
+# 
+# # Predictions on new data
+# bgt2_pred <- bgt_fit %>%
+#   predict(new_data = dfa_test) %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Calculate accuracy
+# accuracy2 <- bgt2_pred %>%
+#   metrics(truth = high_booking, estimate = .pred_class) %>%
+#   filter(.metric == "accuracy") %>%
+#   pull(.estimate)
+# 
+# print(paste("Bagged Trees model accuracy:", round(accuracy2, 3)))
+```
+# 
+# 
+```{r}
+# # Make predictions on assessment data
+# results_b <-
+#   predict(bgt2_fit, dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Convert high_booking to factor
+# results_b <-
+#   results_b %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+# 
+# # Rename columns
+# results_b <-
+#   results_b %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # ROC AUC
+# roc_auc_bagged<- yardstick::roc_auc(
+#   data = results_b,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   estimator = NULL,
+#   na_rm = TRUE,
+#   event_level = "second",
+#   case_weights = NULL
+# )
+# roc_auc_bagged
+```
+# 
+# # 95% roc auc from random forest. Used all variables left over after dropping text cols that werent catagorical and removed NA's
+```{r}
+# # Create the random forest model
+# rforest_method <-
+#   rand_forest() %>%
+#   set_engine("ranger") %>%
+#   set_mode("classification")
+# 
+# # Create random forest recipe
+# rforest_recipe <-
+#   recipe(high_booking ~ ., data = dfa_train)
+# 
+# # Create random forest workflow
+# rforest_workflow <- workflow() %>%
+#   add_model(rforest_method) %>%
+#   add_recipe(rforest_recipe)
+# 
+# # Fit random forest model
+# set.seed(3.14159)
+# fit_rforest <-
+#   fit(rforest_workflow, dfa_train)
+# 
+# # Make predictions on assessment data
+# results_to_assess_rforest <-
+#   predict(fit_rforest, dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Convert high_booking to factor
+# results_to_assess_rforest <-
+#   results_to_assess_rforest %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+# 
+# # Rename columns
+# results_to_assess_rforest <-
+#   results_to_assess_rforest %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # ROC AUC
+# roc_auc_result <- yardstick::roc_auc(
+#   data = results_to_assess_rforest,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   estimator = NULL,
+#   na_rm = TRUE,
+#   event_level = "second",
+#   case_weights = NULL
+# )
+# 
+# roc_auc_result
+# 
+# # Accuracy
+# accuracy_rf <-
+#   accuracy(
+#     data = results_to_assess_rforest %>%
+#       mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#         levels = c(0, 1)
+#       )),
+#     truth = high_booking,
+#     estimate = predicted_class
+#   )
+# 
+# accuracy_rf
+# 
+# # Confusion matrix
+# conf_mat_rf <-
+#   conf_mat(
+#     data = results_to_assess_rforest %>%
+#       mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#         levels = c(0, 1)
+#       )),
+#     truth = high_booking,
+#     estimate = predicted_class
+#   )
+# 
+# conf_mat_rf
+```
+# 
+```{r}
+# colnames(dfa_train)
+```
+# 
+# 
+# # model performance comparison of Log model and Random Forest (ROC Curve Comparison)
+```{r}
+# 
+# roc_rf <- roc_curve(
+#   data = results_to_assess_rforest,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   event_level = "second"
+# )
+# 
+# # For Logistic Regression
+# # Assuming results_log has the same structure as results_to_assess_rforest
+# roc_log <- roc_curve(
+#   data = results_log,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   event_level = "second"
+# )
+# 
+# # Add model labels to each dataset
+# roc_rf$model <- "Random Forest"
+# roc_log$model <- "Logistic Regression"
+# 
+# # Combine the ROC curve data
+# combined_roc <- bind_rows(roc_rf, roc_log)
+# 
+# # Create the plot
+# roc_plot <- ggplot(combined_roc, aes(x = 1 - specificity, y = sensitivity, color = model)) +
+#   geom_path(size = 1.2) +
+#   geom_abline(lty = 3, alpha = 0.4) +  # Reference line (random classifier)
+#   coord_equal() +
+#   scale_color_manual(values = c("Random Forest" = "blue", "Logistic Regression" = "red")) +
+#   labs(
+#     title = "ROC Curve Comparison",
+#     subtitle = paste0("Random Forest AUC: ", round(roc_auc_result$.estimate, 3),
+#                      ", Logistic Regression AUC: ", round(auc_value$.estimate, 3)),
+#     x = "False Positive Rate (1 - Specificity)",
+#     y = "True Positive Rate (Sensitivity)",
+#     color = "Model"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     legend.position = "bottom",
+#     legend.title = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     panel.border = element_rect(fill = NA, color = "gray80")
+#   )
+# 
+# # Print the plot
+# roc_plot
+```
+# 
+# 
+# # model performance comparison of Light GBM, Random Forest, and bagged trees (ROC Curve Comparison)
+```{r}
+# library(yardstick)
+# library(tidyverse)
+# 
+# # Random Forest ROC curve
+# roc_rf <- roc_curve(
+#   data = results_to_assess_rforest,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   event_level = "second"
+# ) %>%
+#   mutate(model = "Random Forest")
+# 
+# # Bagged Trees ROC curve
+# roc_bagged <- roc_curve(
+#   data = results_b,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   event_level = "second"
+# ) %>%
+#   mutate(model = "Bagged Trees")
+# 
+# # Light GBM ROC curve
+# roc_gb <- roc_curve(
+#   data = results_lgb,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   event_level = "second"
+# ) %>%
+#   mutate(model = "Light GBM")
+# 
+# # Combine the ROC curve data
+# combined_roc <- bind_rows(roc_rf, roc_bagged, roc_gb)
+# 
+# # Create the plot
+# roc_plot2 <- ggplot(combined_roc, aes(x = 1 - specificity, y = sensitivity, color = model)) +
+#   geom_path(size = 1.2) +
+#   geom_abline(lty = 3, alpha = 0.4) +  # Reference line (random classifier)
+#   coord_equal() +
+#   scale_color_manual(values = c("Random Forest" = "blue", "Bagged Trees" = "red", "Light GBM" = "green")) +
+#   labs(
+#     title = "ROC Curve Comparison",
+#     x = "False Positive Rate (1 - Specificity)",
+#     y = "True Positive Rate (Sensitivity)",
+#     color = "Model"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     legend.position = "bottom",
+#     legend.title = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     panel.border = element_rect(fill = NA, color = "gray80")
+#   )
+# 
+# # Print the plot
+# roc_plot2
+```
+# 
+# # Do people prefer high occupency when contrling for price
+```{r}
+# ps_recipe <-
+#   dfa_train %>% 
+#   recipe(high_booking ~ beds + price)
+# 
+# pricesize_workflow <-
+#   workflow() %>%
+#   add_model(log_method) %>%
+#   add_recipe(ps_recipe)
+# 
+# ps_fit <-
+#   fit(pricesize_workflow, data = dfa_train)
+# 
+# tidy(ps_fit)
+# 
+# glance(ps_fit)
+```
+# 
+```{r}
+# results_ps <-
+#   predict(ps_fit, new_data = dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test) %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # Convert high_booking to factor
+#   results_ps <-
+#   results_ps %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+#   
+#   auc_ps <-
+#   yardstick::roc_auc(results_ps,
+#     truth = high_booking,
+#     Predicted_Probability,
+#     estimator = NULL,
+#     na_rm = TRUE,
+#     event_level = "second",
+#     case_weights = NULL
+#   )
+# 
+# auc_ps
+# 
+# #roc_auc = 55% so these are not good predictors by themselves
+```
+# 
+# # Do people prefer high occupency when contrling for price
+```{r}
+# pa_recipe <-
+#   dfa_train %>% 
+#   recipe(high_booking ~ security_deposit + price)
+# 
+# pricesize_workflow <-
+#   workflow() %>%
+#   add_model(log_method) %>%
+#   add_recipe(pa_recipe)
+# 
+# pa_fit <-
+#   fit(pricesize_workflow, data = dfa_train)
+# 
+# tidy(pa_fit)
+# 
+# glance(pa_fit)
+# 
+# 
+# results_pa <-
+#   predict(pa_fit, new_data = dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test) %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # Convert high_booking to factor
+#   results_pa <-
+#   results_pa %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+#   
+#   auc_pa <-
+#   yardstick::roc_auc(results_pa,
+#     truth = high_booking,
+#     Predicted_Probability,
+#     estimator = NULL,
+#     na_rm = TRUE,
+#     event_level = "second",
+#     case_weights = NULL
+#   )
+# 
+# auc_pa
+# 
+# #WHEN CONTROLING FOR PRICE ROC AUCs ONLY
+# #roc_auc accommodates = .53485
+# #roc_auc min nights = .6378964
+# #roc_auc max nights = .545035
+# #is_business_travel_ready = .5586052
+# #bedrooms = .5582611
+# #instant bookable = .5795607
+# #host = superhost = .5635815
+# #host has profile = .557905
+# #guests allowed? = .604598
+# #host ID Verified = .5737252
+# #Review Score Checkin = .
+# # security deposit = .
+# 
+```
+# 
+```{r}
+# # Create the random forest model
+# nrforest_method <-
+#   rand_forest() %>%
+#   set_engine("ranger") %>%
+#   set_mode("classification")
+# 
+# # Create random forest recipe
+# nrforest_recipe <-
+#   recipe(high_booking ~ guests_included + minimum_nights
+#          + instant_bookable + host_is_superhost + price
+#          + host_identity_verified + latitude + accommodates
+#          + review_scores_checkin + security_deposit,
+#          data = dfa_train)
+# 
+# # Create random forest workflow
+# nrforest_workflow <- workflow() %>%
+#   add_model(nrforest_method) %>%
+#   add_recipe(nrforest_recipe)
+# 
+# # Fit random forest model
+# set.seed(3.14159)
+# fit_nrforest <-
+#   fit(nrforest_workflow, dfa_train)
+# 
+# # Make predictions on assessment data
+# results_to_assess_nrforest <-
+#   predict(fit_nrforest, dfa_test, type = "prob") %>%
+#   bind_cols(dfa_test %>% select(high_booking))
+# 
+# # Convert high_booking to factor
+# results_to_assess_nrforest <-
+#   results_to_assess_nrforest %>%
+#   mutate(high_booking = factor(high_booking, levels = c(0, 1)))
+# 
+# # Rename columns
+# results_to_assess_nrforest <-
+#   results_to_assess_nrforest %>%
+#   rename(Predicted_Probability = .pred_1)
+# 
+# # ROC AUC
+# nrroc_auc_result <- yardstick::roc_auc(
+#   data = results_to_assess_nrforest,
+#   truth = high_booking,
+#   Predicted_Probability,
+#   estimator = NULL,
+#   na_rm = TRUE,
+#   event_level = "second",
+#   case_weights = NULL
+# )
+# 
+# nrroc_auc_result
+# 
+# # Accuracy
+# accuracy_nrf <-
+#   precision(
+#     data = results_to_assess_nrforest %>%
+#       mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#         levels = c(0, 1)
+#       )),
+#     truth = high_booking,
+#     estimate = predicted_class
+#   )
+# 
+# accuracy_nrf
+# 
+# # Confusion matrix
+# conf_mat_nrf <-
+#   conf_mat(
+#     data = results_to_assess_nrforest %>%
+#       mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#         levels = c(0, 1)
+#       )),
+#     truth = high_booking,
+#     estimate = predicted_class
+#   )
+# 
+# conf_mat_nrf
+```
+# 
+# #Can we index the predictions to find out which ones are being predicted which ways
+```{r}
+# predictions_df <- results_to_assess_nrforest %>%
+#   mutate(predicted_class = factor(if_else(Predicted_Probability > 0.5, 1, 0),
+#                                   levels = c(0, 1)))
+# 
+# predictions_df <- predictions_df %>%
+#   mutate(id = row_number(), .before = 1)
+# 
+# dfa_test_w_preds <- dfa_test %>%
+#   left_join(
+#     predictions_df %>%
+#       select(id, predicted_class),  # Replace common_key_column with your actual join key
+#     by = "id"  # Replace with your actual key column name
+#   ) #Could not figure out why it would not match all the id's and therefore classifications back to the data on time
+```
+# 
+```{r}
+# # dfa_test_w_preds %>% 
+# #   filter(predicted_class == 0) %>% 
+# #   tally()
+```
+# 
+# 
+```{r}
+# #  dfa_test_w_preds %>% 
+# #   filter(high_booking == 0) %>% 
+# #   filter(predicted_class == 1) %>%
+# # #  filter(host_is_superhost == 0) %>% 
+# # #  filter(host_identity_verified == 0) %>% 
+# # #  filter(instant_bookable == 0) %>% # These filters pick the BnBs that meet above criteria and lack established predicters of high booking rate. # the two above filter for false negatives. Places that model thinks should havea highbooking rate but dont in reality. These are a missed opportunity
+# #    # These filters pick the BnBs that meet above criteria and lack established predicters of high booking rate.
+# #   select(id)
+```
+# # Is it rare for a place to lack all these good predictors and be high booking
+```{r}
+#  dfa_test_w_preds %>% 
+#   filter(high_booking == 1) %>% 
+#   filter(predicted_class == 1) %>% # the two above filter for false negatives. Places that model thinks should havea highbooking rate but dont in reality. These are a missed opportunity
+#   filter(host_is_superhost == 0) %>% 
+#   filter(host_identity_verified == 0) %>% 
+#   filter(instant_bookable == 0) %>% # These filters pick the BnBs that meet above criteria and lack established predicters of high booking rate.
+#   select(id)
+# 
+# #Yes, there are 727 true positives and only 20 of them lack those predictors
+# #This is far more rare than the False positives at 21/121. ~20%
+```
+# 
+# # Is there a lot of business travel in high booking? (1 bed)
+```{r}
+# dfanew %>% 
+#   filter(beds == 1) %>% 
+#   count(high_booking == 1)
+```
+# 
+# # Is there a lot of business travel in high booking? (low bed count)
+```{r}
+# highbooking_by_bedrooms<- dfanew %>%
+#   filter(!is.na(bedrooms)) %>%  # Remove NA in beds
+#   mutate(high_booking = case_when(
+#     is.na(high_booking) ~ NA_real_,  # Keep NAs as is
+#     high_booking %in% c("TRUE", "yes", "1", TRUE, 1) ~ 1,  # Map to 1
+#     high_booking %in% c("FALSE", "no", "0", FALSE, 0) ~ 0,  # Map to 0
+#     TRUE ~ NA_real_  # Any other value becomes NA
+#   )) %>%
+#   group_by(bedrooms) %>%
+#   summarise(percentage_high_booking = if_else(
+#     all(is.na(high_booking)), 
+#     NA_real_, 
+#     mean(high_booking, na.rm = TRUE) * 100
+#   )) %>%
+#   ungroup()
+# highbooking_by_bedrooms
+```
