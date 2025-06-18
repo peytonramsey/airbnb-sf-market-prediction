@@ -1,5 +1,5 @@
 # airbnb-sf-market-prediction
-This project aimed to build a supervised machine learning model to predict which Airbnb listings in San Francisco were most likely to receive high booking volume. Using a dataset of 12,000+ listings, our team explored the impact of pricing, location, room type, host status, and review scores on booking performance.  
+This project aimed to build a supervised machine learning model to predict which Airbnb listings in San Francisco were most likely to receive high booking volume. Using a dataset of 12,000+ listings, our team explored the impact of pricing, location, room type, host status, and review scores on booking performance.  This repository contains a random sample of 6,000 listings from the original dataset to keep the file size manageable.
 
 We cleaned and preprocessed the data in R, applying feature engineering techniques to create 15+ predictors from host metrics, pricing structure, and property characteristics. I led the model development process, implementing and tuning multiple classification algorithms including logistic regression, bagged trees, LightGBM, and Random Forest. Model evaluation was conducted using cross-validation and ROC AUC as the primary metric.  
 
