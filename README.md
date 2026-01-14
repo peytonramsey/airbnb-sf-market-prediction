@@ -87,6 +87,8 @@ install.packages(c("tidyverse", "tidymodels", "ranger",
   - Host: superhost_status, response_rate, acceptance_rate
   - Reviews: rating, cleanliness, location, value scores
 
+**Note**: This repository contains a random sample (~6,000 listings) to keep file sizes manageable. The original analysis was performed on the full dataset of 12,947 listings. Running the code on the sample data will produce slightly different results, but the methodology and approach remain identical.
+
 ## Author
 
 **Peyton Ramsey** - [GitHub](https://github.com/yourusername)
